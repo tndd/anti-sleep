@@ -8,7 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let power = SystemPower()
     private lazy var protection = ProtectionSwitch(makeSession: { ProtectionSession(backend: self.power) })
     private var timer: DispatchSourceTimer?
-    private var statusItem: NSStatusItem!
+    private var statusItem: NSStatusItem?
     private let popover = NSPopover()
     private let panel = PowerPanelView(frame: NSRect(x: 0, y: 0, width: 300, height: 410))
     private var renderWindow: NSWindow?
@@ -24,10 +24,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let others = NSRunningApplication.runningApplications(withBundleIdentifier: "app.antisleep.AntiSleep")
             .filter { $0.processIdentifier != getpid() && !$0.isTerminated && $0.activationPolicy != .prohibited }
         if !preview, !others.isEmpty { exit(0) }
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.target = self
-        statusItem.button?.action = #selector(togglePopover)
-        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        // 画像出力では項目を作らない。isVisible=falseは保存され、本番の表示まで消してしまう。
+        if !(preview && argument(after: "--render-preview") != nil) {
+            let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            item.autosaveName = preview ? "AntiSleepPreview" : "AntiSleep"
+            item.isVisible = true
+            item.button?.target = self
+            item.button?.action = #selector(togglePopover)
+            item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            statusItem = item
+        }
         let controller = NSViewController()
         controller.view = panel
         popover.contentViewController = controller
@@ -67,7 +73,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(woke), name: NSWorkspace.didWakeNotification, object: nil)
         if let path = argument(after: "--render-preview"), preview {
-            statusItem.isVisible = false
             renderWindow = NSWindow(contentRect: panel.frame, styleMask: [.borderless], backing: .buffered, defer: false)
             renderWindow?.contentView = panel
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -128,8 +133,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func show(_ state: ProtectionSwitchState) {
         latestState = state
         panel.show(state, preview: preview)
-        statusItem.button?.image = BoltIcon.make(on: state.confirmedOn)
-        statusItem.button?.toolTip = "AntiSleep — " + (state.confirmedOn ? "スリープ防止ON" : (state.enabled ? "保護の確認が必要" : "OFF"))
+        statusItem?.button?.image = BoltIcon.make(on: state.confirmedOn)
+        statusItem?.button?.toolTip = "AntiSleep — " + (state.confirmedOn ? "スリープ防止ON" : (state.enabled ? "保護の確認が必要" : "OFF"))
     }
 
     @objc private func togglePower() {
@@ -157,7 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func openPopover() {
-        guard let button = statusItem.button else { return }
+        guard let button = statusItem?.button else { return }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -240,8 +245,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func recordLaunch(_ path: String, seconds: Int) {
         let assertions = Command.run("/usr/bin/pmset", ["-g", "assertions"]).output
         let own = assertions.components(separatedBy: "\n   pid ").filter { $0.hasPrefix("\(getpid())(") }.joined()
+        let menuFrame = statusItem?.button?.window?.frame
+        let menuScreen = statusItem?.button?.window?.screen
+        let rightArea = menuScreen?.auxiliaryTopRightArea ?? menuScreen?.frame
+        let onRight: Bool
+        if let frame = menuFrame, let area = rightArea {
+            onRight = frame.minX >= area.minX && frame.maxX <= area.maxX + 1
+        } else {
+            onRight = false
+        }
         launchSnapshots.append([
             "seconds": seconds, "pid": getpid(),
+            "menuBarItemCreated": statusItem != nil,
+            "menuBarVisible": statusItem?.isVisible ?? false,
+            "menuBarOnRight": onRight,
+            "menuBarX": statusItem?.button?.window?.frame.minX as Any? ?? NSNull(),
+            "menuBarWidth": statusItem?.button?.window?.frame.width as Any? ?? NSNull(),
             "windowVisible": popover.isShown, "appActive": NSApp.isActive,
             "enabled": latestState.enabled, "confirmedOn": latestState.confirmedOn,
             "sleepDisabled": power.readSleepDisabled() as Any? ?? NSNull(),

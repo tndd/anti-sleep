@@ -30,6 +30,8 @@ run('--verify-toggle', str(sequence))
 states = json.loads(sequence.read_text())
 assert len(states) == 4, '切り替えの記録がありません。既存のAntiSleepを終了してください'
 for state, expected in zip(states, [False, True, False, True]):
+    assert state['menuBarVisible'], state
+    assert state['menuBarOnRight'], state
     assert state['enabled'] == expected, state
     assert state['confirmedOn'] == expected, state
     assert state['sleepDisabled'] == expected, state
@@ -54,6 +56,9 @@ try:
     snapshots = json.loads(relaunch.read_text())
     assert len(snapshots) == 3
     for state in snapshots:
+        assert state['menuBarVisible'], state
+        if state['seconds'] >= 2:
+            assert state['menuBarOnRight'], state
         assert not any(state[key] for key in ['enabled', 'confirmedOn', 'sleepDisabled', 'idleProtected', 'displayAssertion', 'windowVisible', 'appActive']), state
 finally:
     process.terminate()

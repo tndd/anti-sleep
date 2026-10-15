@@ -75,7 +75,8 @@ zsh scripts/build-app.sh
 生成物は`dist/AntiSleep.app`です。ローカルビルドはアドホック署名です。
 AppleのDeveloper ID署名・公証は付いていません。
 
-画面の構成だけを確認する場合は、設定変更を行わないプレビューを使えます。
+画面の構成だけを確認する場合は、電源設定変更を行わないプレビューを使えます。
+画像出力プレビューはメニューバー項目を作らず、本番の表示設定に影響しません。
 
 ```sh
 dist/AntiSleep.app/Contents/MacOS/AntiSleep --preview

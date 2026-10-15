@@ -2,6 +2,24 @@
 
 2026年10月15日。Apple Silicon Mac / macOS 15.8.1で確認。
 
+## 0.2.1：メニューバーのアイコンが左端へ消える問題
+
+画像プレビューでNSStatusItem.isVisible=falseを設定すると、AppKitが自動採番した
+Item-0の非表示設定を保存していた。本番も同じ自動名を使用していたため、
+通常起動時に非表示状態を引き継いだ。実機でisVisible=false・x=0を
+起動直後・2秒後・8秒後に確認し、修正前の検証スクリプトが失敗することを確認した。
+0.2.0ではアプリの常駐とパネル非表示だけを確認し、メニューバー自体の可視性を見落としていた。
+
+画像出力ではメニューバー項目を作らず、本番は専用名AntiSleepで表示を明示する。
+対話プレビューは別名AntiSleepPreviewを使う。他アプリの配置やシステム全体の設定は変更しない。
+
+検証：23項目・Releaseビルド・署名検証に加え、verify-menu-bar.pyで
+通常起動の可視性と右側配置、OFF/ON画像プレビューで項目を作らないこと、
+プレビュー後も本番アイコンが右側に残ること、OFFとパネル非表示の維持を確認した。
+AppKitの初期配置前は一時的にx=0になるため、右側配置は2秒後・8秒後に確認する。
+OFF→ON→OFF→ONと再起動でも可視性・右側配置を検証した。
+電源制御・ふた閉じ処理は今回変更していないため、物理的なふた操作や強制終了試験は再実施していない。
+
 ## 0.2.0：起動OFFと電源ボタン
 
 アプリの常駐と保護のON/OFFを分離。前回状態は保存せず、通常起動は常にOFF。
@@ -100,6 +118,7 @@ AntiSleepと旧版Capsomniaを終了し、開始時点のSleepDisabled=0を確�
 既存の設定を保護するため、開始時点の状態が違う場合は検証を中止する。
 
 ```sh
+python3 scripts/verify-menu-bar.py dist/AntiSleep.app test-results/menu-bar-check.json
 python3 scripts/verify-toggle.py dist/AntiSleep.app test-results/toggle-check.json
 python3 scripts/verify-system.py dist/AntiSleep.app test-results/system-check.json
 ```
