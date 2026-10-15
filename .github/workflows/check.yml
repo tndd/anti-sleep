@@ -1,0 +1,21 @@
+name: 検証
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: 単体テスト
+        run: |
+          swift --version
+          swift run AntiSleepChecks
+      - name: アプリ作成・署名検証
+        run: |
+          zsh scripts/build-app.sh
+          ditto -c -k --sequesterRsrc --keepParent dist/AntiSleep.app dist/AntiSleep.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AntiSleep
+          path: dist/AntiSleep.zip
