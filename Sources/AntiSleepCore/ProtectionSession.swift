@@ -2,11 +2,11 @@ import Foundation
 
 public protocol PowerBackend: AnyObject {
     func acquireIdleAssertion() -> Bool
-    func releaseIdleAssertion()
+    func releaseIdleAssertion() -> Bool
     func conflictingAppIsRunning() -> Bool
     func readSleepDisabled() -> Bool?
     func armRecovery(restoring original: Bool) -> Bool
-    func disarmRecovery()
+    func disarmRecovery() -> Bool
     func setSleepDisabled(_ disabled: Bool) -> Bool
     func lidIsClosed() -> Bool?
     func turnDisplaysOff() -> Bool
@@ -48,10 +48,11 @@ public final class ProtectionSession {
             return status(idle, false, "ふた閉じ保護を準備できません。ヘルパーを設定してください。")
         }
         if !actual {
+            // タイムアウトや失敗応答でも、OS側では変更済みの可能性がある。
+            changedSetting = true
             guard backend.setSleepDisabled(true) else {
                 return status(idle, false, "ふた閉じ保護の適用に失敗しました。ヘルパー設定を確認してください。")
             }
-            changedSetting = true
         }
         guard backend.readSleepDisabled() == true else {
             return status(idle, false, "ふた閉じ保護が解除されています。再試行しています。")
@@ -79,12 +80,13 @@ public final class ProtectionSession {
     public func stop() -> Bool {
         if changedSetting, let original {
             if backend.readSleepDisabled() != original {
-                guard backend.setSleepDisabled(original),
-                      backend.readSleepDisabled() == original else { return false }
+                _ = backend.setSleepDisabled(original)
+                guard backend.readSleepDisabled() == original else { return false }
             }
         }
-        backend.disarmRecovery()
-        backend.releaseIdleAssertion()
+        // 解除を確認するまで監視を残す。監視自身の終了も確認してから終了を許可する。
+        guard backend.releaseIdleAssertion(), backend.disarmRecovery() else { return false }
+        changedSetting = false
         return true
     }
 
