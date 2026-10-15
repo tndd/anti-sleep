@@ -59,16 +59,18 @@ public final class ProtectionSession {
         guard idle else {
             return status(false, true, "無操作スリープの防止要求を登録できません。再試行しています。")
         }
-        switch backend.lidIsClosed() {
-        case true:
+        guard let closed = backend.lidIsClosed() else {
+            return status(true, true, "本体は保護中です。ふたの状態を確認できません。")
+        }
+        if closed {
             if !displaysOffForCurrentClosure {
                 displaysOffForCurrentClosure = backend.turnDisplaysOff()
                 if !displaysOffForCurrentClosure {
                     return status(true, true, "本体は保護中です。画面の消灯に失敗したため再試行しています。")
                 }
             }
-        case false: displaysOffForCurrentClosure = false
-        case nil: return status(true, true, "本体は保護中です。ふたの状態を確認できません。")
+        } else {
+            displaysOffForCurrentClosure = false
         }
         return status(true, true, "画面は消灯できます。Caps Lockを操作しても保護は続きます。")
     }

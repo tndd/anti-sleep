@@ -8,7 +8,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: 単体テスト
-        run: swift run AntiSleepChecks
+        run: |
+          swift --version
+          swift run AntiSleepChecks
       - name: アプリ作成・署名検証
         run: |
           zsh scripts/build-app.sh
