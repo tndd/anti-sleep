@@ -19,12 +19,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let panel = PowerPanelView(frame: NSRect(x: 0, y: 0, width: 300, height: 330))
     private var renderWindow: NSWindow?
     private var stopping = false
+    private var terminationPending = false
     private var lastDetail = ""
     private var signalSources: [DispatchSourceSignal] = []
     private var latestState = ProtectionSwitchState(enabled: false, protection: nil)
     private var launchSnapshots: [[String: Any]] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // 監視の突然の終了は書き込みエラーとして扱い、アプリをSIGPIPEで終了させない。
+        signal(SIGPIPE, SIG_IGN)
         NSApp.setActivationPolicy(.accessory)
         NSApp.appearance = NSAppearance(named: .aqua)
         let others = NSRunningApplication.runningApplications(withBundleIdentifier: "app.antisleep.AntiSleep")
@@ -49,6 +52,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.powerButton.action = #selector(togglePower)
         panel.helperButton.target = self
         panel.helperButton.action = #selector(installHelper)
+        panel.quitButton.target = self
+        panel.quitButton.action = #selector(quit)
         for number in [SIGTERM, SIGINT] {
             signal(number, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: number, queue: .main)
@@ -200,6 +205,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if preview { return .terminateNow }
+        guard !terminationPending else { return .terminateLater }
+        terminationPending = true
         panel.setWorking(true)
         worker.async { [weak self] in
             guard let self else { return }
@@ -211,6 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.stopping = false
             self.startTimer()
             RunLoop.main.perform(inModes: [.common]) {
+                self.terminationPending = false
                 self.panel.setWorking(false)
                 self.alert("元の設定に戻せなかったため、終了を中止しました。", detail: "ヘルパーを設定し直してから、もう一度終了してください。")
                 NSApp.reply(toApplicationShouldTerminate: false)

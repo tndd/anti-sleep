@@ -61,22 +61,38 @@ enum RecoveryMonitor {
         let args = CommandLine.arguments
         guard args.count == 4, args[1] == "--restore-on-exit" else { return false }
         guard Helper.isTrusted(args[2]), ["0", "1"].contains(args[3]) else { exit(64) }
-        FileHandle.standardOutput.write(Data("ready\n".utf8))
-        let message = FileHandle.standardInput.readDataToEndOfFile()
-        if message == Data("handled".utf8) { exit(0) }
-        for attempt in 0..<3 {
-            if Helper.run(args[2], disabled: args[3] == "1") { exit(0) }
-            if attempt < 2 { Thread.sleep(forTimeInterval: 1) }
+        // 親と同時に通常の終了シグナルを受けても、復元を完了するまで監視を残す。
+        for number in [SIGTERM, SIGINT, SIGHUP, SIGPIPE] { signal(number, SIG_IGN) }
+        try? FileHandle.standardOutput.write(contentsOf: Data("ready\n".utf8))
+        let original = args[3] == "1"
+        // 設定変更もここで直列に実行する。親が変更途中で落ちても、その完了後に復元する。
+        while let request = readLine() {
+            if request == "handled" {
+                if SystemPower.sleepDisabled() == original { exit(0) }
+                break
+            }
+            guard request == "on" || request == "off" else { break }
+            let disabled = request == "on"
+            _ = Helper.run(args[2], disabled: disabled)
+            let reply = SystemPower.sleepDisabled() == disabled ? "1" : "0"
+            // 親の強制終了で応答先を失っても、EOFを読み取り復元へ進む。
+            try? FileHandle.standardOutput.write(contentsOf: Data(reply.utf8))
         }
-        exit(70)
+        while true {
+            if SystemPower.sleepDisabled() == original { exit(0) }
+            _ = Helper.run(args[2], disabled: original)
+            if SystemPower.sleepDisabled() == original { exit(0) }
+            // 一時的なヘルパー障害で諦めない。成功応答だけでなく設定の実値を確認する。
+            Thread.sleep(forTimeInterval: 5)
+        }
     }
 }
 
 final class SystemPower: PowerBackend {
     private var assertion = IOPMAssertionID(0)
-    private var helper: String?
     private var recovery: Process?
     private var recoveryInput: Pipe?
+    private var recoveryOutput: Pipe?
     var onEvent: ((String) -> Void)?
 
     func acquireIdleAssertion() -> Bool {
@@ -84,8 +100,7 @@ final class SystemPower: PowerBackend {
            let properties = IOPMAssertionCopyProperties(assertion)?.takeRetainedValue() as? [String: Any],
            let level = properties[kIOPMAssertionLevelKey] as? NSNumber,
            level.intValue == kIOPMAssertionLevelOn { return true }
-        if assertion != 0 { IOPMAssertionRelease(assertion) }
-        assertion = 0
+        guard releaseIdleAssertion() else { return false }
         return IOPMAssertionCreateWithName(
             kIOPMAssertionTypePreventUserIdleSystemSleep as CFString,
             IOPMAssertionLevel(kIOPMAssertionLevelOn),
@@ -93,8 +108,12 @@ final class SystemPower: PowerBackend {
         ) == kIOReturnSuccess
     }
 
-    func releaseIdleAssertion() {
-        if assertion != 0 { IOPMAssertionRelease(assertion); assertion = 0 }
+    func releaseIdleAssertion() -> Bool {
+        guard assertion != 0 else { return true }
+        let result = IOPMAssertionRelease(assertion)
+        guard result == kIOReturnSuccess || result == kIOReturnNotFound else { return false }
+        assertion = 0
+        return true
     }
 
     func conflictingAppIsRunning() -> Bool {
@@ -102,6 +121,10 @@ final class SystemPower: PowerBackend {
     }
 
     func readSleepDisabled() -> Bool? {
+        Self.sleepDisabled()
+    }
+
+    static func sleepDisabled() -> Bool? {
         let r = Command.run("/usr/bin/pmset", ["-g"])
         return r.status == 0 ? SleepSettingParser.parse(r.output) : nil
     }
@@ -109,7 +132,6 @@ final class SystemPower: PowerBackend {
     func armRecovery(restoring original: Bool) -> Bool {
         if let recovery, recovery.isRunning { return true }
         guard let path = Helper.availablePath() else { return false }
-        helper = path
         let process = Process()
         let input = Pipe()
         let output = Pipe()
@@ -131,26 +153,35 @@ final class SystemPower: PowerBackend {
         }
         recovery = process
         recoveryInput = input
+        recoveryOutput = output
         onEvent?("異常終了時の復元監視を開始")
         return true
     }
 
-    func disarmRecovery() {
-        // 正常終了では親が復元済み。異常終了時だけ監視側が復元する。
-        try? recoveryInput?.fileHandleForWriting.write(contentsOf: Data("handled".utf8))
+    func disarmRecovery() -> Bool {
+        // 親の復元後、監視側でも実値を確認して終了する。
+        try? recoveryInput?.fileHandleForWriting.write(contentsOf: Data("handled\n".utf8))
         try? recoveryInput?.fileHandleForWriting.close()
-        recoveryInput = nil
         if let recovery {
             let deadline = Date().addingTimeInterval(3)
             while recovery.isRunning, Date() < deadline { Thread.sleep(forTimeInterval: 0.05) }
-            if recovery.isRunning { recovery.terminate() }
+            guard !recovery.isRunning else { return false }
         }
+        recoveryInput = nil
+        recoveryOutput = nil
         recovery = nil
+        return true
     }
 
     func setSleepDisabled(_ disabled: Bool) -> Bool {
-        guard let helper else { return false }
-        let result = Helper.run(helper, disabled: disabled)
+        guard let recovery, recovery.isRunning, let recoveryInput, let recoveryOutput else { return false }
+        do {
+            try recoveryInput.fileHandleForWriting.write(contentsOf: Data((disabled ? "on\n" : "off\n").utf8))
+        } catch { return false }
+        var descriptor = pollfd(fd: recoveryOutput.fileHandleForReading.fileDescriptor, events: Int16(POLLIN), revents: 0)
+        let arrived = poll(&descriptor, 1, 20_000) > 0
+        let answer = arrived ? (try? recoveryOutput.fileHandleForReading.read(upToCount: 1)) : nil
+        let result = answer == Data("1".utf8)
         onEvent?("本体スリープ防止=\(disabled) 適用成功=\(result)")
         return result
     }

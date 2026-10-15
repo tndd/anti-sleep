@@ -46,7 +46,13 @@ let checks: [(String, () -> Void)] = [
     ("OFF失敗時にONを保持する", switches.testOffRestoreFailureKeepsOn),
     ("ONで終了すると復元し次回はOFF", switches.testQuitOnRestoresAndNextLaunchAlwaysStartsOff),
     ("OFFで終了するときは設定に触れない", switches.testOffQuitHasNoPowerSideEffects),
-    ("適用未確認のONを成功扱いしない", switches.testRequestedOnIsNotGreenUntilBothProtectionsAreConfirmed)
+    ("適用未確認のONを成功扱いしない", switches.testRequestedOnIsNotGreenUntilBothProtectionsAreConfirmed),
+    ("失敗応答でも変更された設定を復元", suite.testFailedApplyThatChangedSettingStillRestores),
+    ("復元の成功応答だけでは終了を許可しない", suite.testSuccessfulCommandWithoutRestoreDoesNotAllowExit),
+    ("防止要求の解除失敗時は監視を維持", suite.testAssertionReleaseFailureKeepsRecoveryArmed),
+    ("監視が終了するまで終了を許可しない", suite.testRecoveryMustExitBeforeShutdownCompletes),
+    ("正常終了後は定期確認で再度ONにしない", switches.testSuccessfulShutdownCannotReenableProtectionOnReconcile),
+    ("終了失敗後に再試行して復元", switches.testFailedShutdownCanBeRetried)
 ]
 for (name, check) in checks {
     let before = failures

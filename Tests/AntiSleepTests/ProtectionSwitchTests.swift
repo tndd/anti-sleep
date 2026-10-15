@@ -71,6 +71,31 @@ final class ProtectionSwitchTests {
         expectTrue(power.events.isEmpty)
     }
 
+    func testSuccessfulShutdownCannotReenableProtectionOnReconcile() {
+        let power = FakePower()
+        let sut = ProtectionSwitch(makeSession: { ProtectionSession(backend: power) })
+        _ = sut.setEnabled(true)
+        expectTrue(sut.shutdown())
+        expectFalse(sut.enabled)
+        expectFalse(sut.reconcile().enabled)
+        expectEqual(power.sets, [true, false])
+        expectTrue(sut.shutdown())
+        expectEqual(power.disarms, 1)
+    }
+
+    func testFailedShutdownCanBeRetried() {
+        let power = FakePower()
+        let sut = ProtectionSwitch(makeSession: { ProtectionSession(backend: power) })
+        _ = sut.setEnabled(true); power.canSet = false
+        expectFalse(sut.shutdown())
+        expectTrue(sut.enabled)
+        expectEqual(power.disarms, 0)
+        power.canSet = true
+        expectTrue(sut.shutdown())
+        expectFalse(sut.enabled)
+        expectEqual(power.disabled, false)
+    }
+
     func testRequestedOnIsNotGreenUntilBothProtectionsAreConfirmed() {
         let power = FakePower(); power.canArm = false
         let sut = ProtectionSwitch(makeSession: { ProtectionSession(backend: power) })

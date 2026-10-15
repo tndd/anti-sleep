@@ -7,6 +7,10 @@ final class FakePower: PowerBackend {
     var disabled: Bool? = false
     var canArm = true
     var canSet = true
+    var changesOnFailure = false
+    var ignoresSuccessfulSet = false
+    var canRelease = true
+    var canDisarm = true
     var closed: Bool? = false
     var canDarken = true
     var sets: [Bool] = []
@@ -16,16 +20,16 @@ final class FakePower: PowerBackend {
     var displayRequests = 0
     var events: [String] = []
     func acquireIdleAssertion() -> Bool { events.append("idle"); return idle }
-    func releaseIdleAssertion() { releases += 1; events.append("release") }
+    func releaseIdleAssertion() -> Bool { releases += 1; events.append("release"); return canRelease }
     func conflictingAppIsRunning() -> Bool { conflict }
     func readSleepDisabled() -> Bool? { disabled }
     func armRecovery(restoring original: Bool) -> Bool {
         events.append("arm"); recoveryOriginals.append(original); return canArm
     }
-    func disarmRecovery() { disarms += 1; events.append("disarm") }
+    func disarmRecovery() -> Bool { disarms += 1; events.append("disarm"); return canDisarm }
     func setSleepDisabled(_ value: Bool) -> Bool {
         sets.append(value); events.append("set=\(value)")
-        if canSet { disabled = value }
+        if (canSet && !ignoresSuccessfulSet) || changesOnFailure { disabled = value }
         return canSet
     }
     func lidIsClosed() -> Bool? { closed }
@@ -155,6 +159,47 @@ final class ProtectionSessionTests {
     func testIdleAssertionFailureIsNotReportedAsCompleteProtection() {
         let power = FakePower(); power.idle = false
         expectFalse(ProtectionSession(backend: power).reconcile().idleProtected)
+    }
+
+    func testFailedApplyThatChangedSettingStillRestores() {
+        let power = FakePower()
+        power.canSet = false; power.changesOnFailure = true
+        let sut = ProtectionSession(backend: power)
+        expectFalse(sut.reconcile().lidProtected)
+        expectEqual(power.disabled, true)
+        // 復元も失敗応答だが、実値を読み直せれば安全に終了できる。
+        expectTrue(sut.stop())
+        expectEqual(power.disabled, false)
+        expectEqual(power.sets, [true, false])
+    }
+
+    func testSuccessfulCommandWithoutRestoreDoesNotAllowExit() {
+        let power = FakePower(), sut: ProtectionSession
+        sut = ProtectionSession(backend: power)
+        _ = sut.reconcile(); power.ignoresSuccessfulSet = true
+        expectFalse(sut.stop())
+        expectEqual(power.releases, 0)
+        expectEqual(power.disarms, 0)
+    }
+
+    func testAssertionReleaseFailureKeepsRecoveryArmed() {
+        let power = FakePower(), sut: ProtectionSession
+        sut = ProtectionSession(backend: power)
+        _ = sut.reconcile(); power.canRelease = false
+        expectFalse(sut.stop())
+        expectEqual(power.disarms, 0)
+        power.canRelease = true
+        expectTrue(sut.stop())
+        expectLessThan(power.events.firstIndex(of: "release")!, power.events.firstIndex(of: "disarm")!)
+    }
+
+    func testRecoveryMustExitBeforeShutdownCompletes() {
+        let power = FakePower(), sut: ProtectionSession
+        sut = ProtectionSession(backend: power)
+        _ = sut.reconcile(); power.canDisarm = false
+        expectFalse(sut.stop())
+        power.canDisarm = true
+        expectTrue(sut.stop())
     }
 
     func testUnknownLidStateDoesNotBlankDisplays() {

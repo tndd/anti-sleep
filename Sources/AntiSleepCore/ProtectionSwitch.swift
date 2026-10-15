@@ -44,7 +44,13 @@ public final class ProtectionSwitch {
     }
 
     /// 終了時は設定を復元する。新しいインスタンスは常にOFFで開始する。
-    public func shutdown() -> Bool { session?.stop() ?? true }
+    public func shutdown() -> Bool {
+        guard session?.stop() ?? true else { return false }
+        session = nil
+        enabled = false
+        restoreFailed = false
+        return true
+    }
 
     private func state(_ protection: ProtectionStatus?) -> ProtectionSwitchState {
         ProtectionSwitchState(enabled: enabled, protection: protection, restoreFailed: restoreFailed)

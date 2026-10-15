@@ -65,6 +65,7 @@ final class PowerCircleButton: NSButton {
 final class PowerPanelView: NSView {
     let powerButton = PowerCircleButton(frame: .zero)
     let helperButton = NSButton(title: "ヘルパーを設定…", target: nil, action: nil)
+    let quitButton = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "終了")!, target: nil, action: nil)
     private let stack = NSStackView()
     private let glyph = NSImageView()
     private let stateLabel = NSTextField(labelWithString: "OFF")
@@ -113,6 +114,18 @@ final class PowerPanelView: NSView {
         helperButton.font = .systemFont(ofSize: 11)
         helperButton.isHidden = true
         stack.addArrangedSubview(helperButton)
+        quitButton.isBordered = false
+        quitButton.contentTintColor = .secondaryLabelColor
+        quitButton.toolTip = "設定を元に戻してAntiSleepを終了"
+        quitButton.setAccessibilityLabel("設定を元に戻して終了")
+        quitButton.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(quitButton)
+        NSLayoutConstraint.activate([
+            quitButton.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            quitButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            quitButton.widthAnchor.constraint(equalToConstant: 28),
+            quitButton.heightAnchor.constraint(equalToConstant: 28)
+        ])
     }
 
     required init?(coder: NSCoder) { fatalError("未対応") }
@@ -148,6 +161,8 @@ final class PowerPanelView: NSView {
     func setWorking(_ value: Bool) {
         working = value
         powerButton.isEnabled = !value
+        helperButton.isEnabled = !value
+        quitButton.isEnabled = !value
         if value { stateLabel.stringValue = "切り替え中…" }
     }
 }
