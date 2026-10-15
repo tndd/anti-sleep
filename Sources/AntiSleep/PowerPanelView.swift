@@ -1,17 +1,36 @@
 import AppKit
 import AntiSleepCore
 
-enum BoltIcon {
-    static func make(on: Bool, size: CGFloat = 18) -> NSImage? {
+enum StatusDotIcon {
+    static func make(on: Bool, size: CGFloat = 18) -> NSImage {
         let color: NSColor = on ? .systemGreen : .systemGray
-        guard let symbol = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: on ? "スリープ防止ON" : "スリープ防止OFF"),
-              let colored = symbol.withSymbolConfiguration(NSImage.SymbolConfiguration(paletteColors: [color])) else { return nil }
-        // テンプレート画像にせず、メニューバーでも緑・灰色を維持する。
+        // 小さな表示でも輪郭を保ち、採用アイコンと同じ内側の光を添える。
         let image = NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
-            colored.draw(in: rect)
+            let diameter = size * 0.55
+            let circle = NSBezierPath(ovalIn: NSRect(
+                x: rect.midX - diameter / 2, y: rect.midY - diameter / 2,
+                width: diameter, height: diameter))
+            NSGraphicsContext.saveGraphicsState()
+            if on {
+                let glow = NSShadow()
+                glow.shadowColor = color.withAlphaComponent(0.25)
+                glow.shadowBlurRadius = 2
+                glow.shadowOffset = .zero
+                glow.set()
+            }
+            color.setFill()
+            circle.fill()
+            NSGraphicsContext.restoreGraphicsState()
+            let light = color.blended(withFraction: on ? 0.35 : 0.12, of: .white) ?? color
+            NSGradient(starting: light, ending: color)?.draw(
+                in: circle, relativeCenterPosition: NSPoint(x: -0.1, y: 0.25))
+            (color.blended(withFraction: 0.25, of: .black) ?? color).setStroke()
+            circle.lineWidth = 0.6
+            circle.stroke()
             return true
         }
         image.isTemplate = false
+        image.accessibilityDescription = on ? "スリープ防止ON" : "スリープ防止OFF"
         return image
     }
 }
@@ -68,7 +87,7 @@ final class PowerPanelView: NSView {
         ])
         let header = NSStackView()
         header.spacing = 6
-        glyph.image = BoltIcon.make(on: false)
+        glyph.image = StatusDotIcon.make(on: false)
         glyph.widthAnchor.constraint(equalToConstant: 17).isActive = true
         glyph.heightAnchor.constraint(equalToConstant: 17).isActive = true
         let title = NSTextField(labelWithString: "AntiSleep")
@@ -107,7 +126,7 @@ final class PowerPanelView: NSView {
 
     func show(_ state: ProtectionSwitchState, preview: Bool = false) {
         powerButton.confirmedOn = state.confirmedOn
-        glyph.image = BoltIcon.make(on: state.confirmedOn)
+        glyph.image = StatusDotIcon.make(on: state.confirmedOn)
         stateLabel.stringValue = working ? "切り替え中…" : (state.confirmedOn ? "ON" : (state.enabled ? "確認が必要です" : "OFF"))
         stateLabel.font = .systemFont(ofSize: state.enabled && !state.confirmedOn ? 18 : 25, weight: .semibold)
         stateLabel.textColor = state.confirmedOn ? .systemGreen : .secondaryLabelColor
