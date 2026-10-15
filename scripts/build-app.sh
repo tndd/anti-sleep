@@ -12,6 +12,14 @@ install -m 0755 .build/release/AntiSleep "$app_path/Contents/MacOS/AntiSleep"
 install -m 0755 .build/release/anti-sleep-pmset "$app_path/Contents/Resources/anti-sleep-pmset"
 install -m 0755 scripts/install-helper.sh "$app_path/Contents/Resources/install-helper.sh"
 install -m 0644 LICENSE "$app_path/Contents/Resources/LICENSE"
+iconset_path="$PWD/.build/AntiSleep.iconset"
+mkdir -p "$iconset_path"
+for size in 16 32 128 256 512; do
+  sips -z "$size" "$size" Assets/AppIcon.png --out "$iconset_path/icon_${size}x${size}.png" >/dev/null
+  retina_size=$((size * 2))
+  sips -z "$retina_size" "$retina_size" Assets/AppIcon.png --out "$iconset_path/icon_${size}x${size}@2x.png" >/dev/null
+done
+iconutil -c icns "$iconset_path" -o "$app_path/Contents/Resources/AntiSleep.icns"
 cat > "$app_path/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -19,9 +27,10 @@ cat > "$app_path/Contents/Info.plist" <<'PLIST'
 <key>CFBundleIdentifier</key><string>app.antisleep.AntiSleep</string>
 <key>CFBundleName</key><string>AntiSleep</string>
 <key>CFBundleExecutable</key><string>AntiSleep</string>
+<key>CFBundleIconFile</key><string>AntiSleep</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.2.2</string>
-<key>CFBundleVersion</key><string>4</string>
+<key>CFBundleShortVersionString</key><string>0.2.3</string>
+<key>CFBundleVersion</key><string>5</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>

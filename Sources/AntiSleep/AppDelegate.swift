@@ -138,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.show(state, preview: preview)
         popover.contentSize = panel.contentSize
         panel.setFrameSize(popover.contentSize)
-        statusItem?.button?.image = BoltIcon.make(on: state.confirmedOn)
+        statusItem?.button?.image = StatusDotIcon.make(on: state.confirmedOn)
         statusItem?.button?.toolTip = "AntiSleep — " + (state.confirmedOn ? "スリープ防止ON" : (state.enabled ? "保護の確認が必要" : "OFF"))
     }
 
