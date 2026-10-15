@@ -2,22 +2,26 @@ import AppKit
 import AntiSleepCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let preview = ProcessInfo.processInfo.arguments.contains("--preview")
+    private let arguments = ProcessInfo.processInfo.arguments
+    private var preview: Bool { arguments.contains("--preview") }
     private let worker = DispatchQueue(label: "app.antisleep.protection")
     private let power = SystemPower()
-    private lazy var session = ProtectionSession(backend: power)
+    private lazy var protection = ProtectionSwitch(makeSession: { ProtectionSession(backend: self.power) })
     private var timer: DispatchSourceTimer?
-    private var statusItem: NSStatusItem!
-    private var window: NSWindow!
-    private var message: NSTextField!
-    private var headline: NSTextField!
-    private var idleValue: NSTextField!
-    private var lidValue: NSTextField!
-    private var menuStatus: NSMenuItem!
+    private var statusItem: NSStatusItem?
+    private let popover = NSPopover()
+    private lazy var exitMenu: NSMenu = {
+        let menu = NSMenu()
+        let item = menu.addItem(withTitle: "終了", action: #selector(quit), keyEquivalent: "q")
+        item.target = self
+        return menu
+    }()
+    private let panel = PowerPanelView(frame: NSRect(x: 0, y: 0, width: 300, height: 330))
+    private var renderWindow: NSWindow?
     private var stopping = false
     private var lastDetail = ""
     private var signalSources: [DispatchSourceSignal] = []
-    private var latestStatus: ProtectionStatus?
+    private var latestState = ProtectionSwitchState(enabled: false, protection: nil)
     private var launchSnapshots: [[String: Any]] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -26,12 +30,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let others = NSRunningApplication.runningApplications(withBundleIdentifier: "app.antisleep.AntiSleep")
             .filter { $0.processIdentifier != getpid() && !$0.isTerminated && $0.activationPolicy != .prohibited }
         if !preview, !others.isEmpty { exit(0) }
-        buildMenu()
-        buildWindow()
-        if ProcessInfo.processInfo.arguments.contains("--window-id") {
-            print(window.windowNumber)
-            fflush(stdout)
+        // 画像出力では項目を作らない。isVisible=falseは保存され、本番の表示まで消してしまう。
+        if !(preview && argument(after: "--render-preview") != nil) {
+            let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            item.autosaveName = preview ? "AntiSleepPreview" : "AntiSleep"
+            item.isVisible = true
+            item.button?.target = self
+            item.button?.action = #selector(statusItemClicked)
+            item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            statusItem = item
         }
+        let controller = NSViewController()
+        controller.view = panel
+        popover.contentViewController = controller
+        popover.contentSize = panel.frame.size
+        popover.behavior = .transient
+        panel.powerButton.target = self
+        panel.powerButton.action = #selector(togglePower)
+        panel.helperButton.target = self
+        panel.helperButton.action = #selector(installHelper)
         for number in [SIGTERM, SIGINT] {
             signal(number, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: number, queue: .main)
@@ -42,160 +59,124 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             signalSources.append(source)
         }
         power.onEvent = { [weak self] event in self?.log(event) }
+        show(latestState)
         if preview {
-            show(ProtectionStatus(idleProtected: true, lidProtected: true,
-                                  detail: "プレビューです。電源設定は変更していません。"))
+            if arguments.contains("--preview-on") { togglePower() }
         } else {
-            let timer = DispatchSource.makeTimerSource(queue: worker)
-            timer.schedule(deadline: .now(), repeating: 2, leeway: .milliseconds(200))
-            timer.setEventHandler { [weak self] in self?.reconcile() }
-            timer.resume()
-            self.timer = timer
+            // 通常起動は常にOFF。検証時だけ明示フラグでONを要求できる。
+            if arguments.contains("--verify-start-on") {
+                worker.async { [weak self] in
+                    guard let self else { return }
+                    let state = self.protection.setEnabled(true)
+                    DispatchQueue.main.async { self.show(state) }
+                }
+            }
+            startTimer()
         }
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(woke), name: NSWorkspace.didWakeNotification, object: nil)
-        if preview || ProcessInfo.processInfo.arguments.contains("--show-window") {
-            openWindow()
-        }
-        if let index = ProcessInfo.processInfo.arguments.firstIndex(of: "--record-launch"),
-           ProcessInfo.processInfo.arguments.count > index + 1 {
-            let path = ProcessInfo.processInfo.arguments[index + 1]
-            for seconds in [0, 2, 8] {
-                DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(seconds)) { [weak self] in
-                    self?.recordLaunch(path, seconds: seconds)
+        if let path = argument(after: "--render-preview"), preview {
+            renderWindow = NSWindow(contentRect: panel.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            renderWindow?.contentView = panel
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.panel.layoutSubtreeIfNeeded()
+                if let bitmap = self.panel.bitmapImageRepForCachingDisplay(in: self.panel.bounds) {
+                    self.panel.cacheDisplay(in: self.panel.bounds, to: bitmap)
+                    try? bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
                 }
-            }
-        }
-        if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "--render-preview"),
-           ProcessInfo.processInfo.arguments.count > i + 1, preview {
-            let path = ProcessInfo.processInfo.arguments[i + 1]
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-                self?.renderPreview(path)
                 NSApp.terminate(nil)
             }
+        } else if preview || arguments.contains("--show-window") {
+            openPopover()
+        }
+        if let path = argument(after: "--record-launch") {
+            for seconds in [0, 2, 8] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(seconds)) { self.recordLaunch(path, seconds: seconds) }
+            }
+        }
+        if let path = argument(after: "--verify-toggle"), !preview {
+            // 本番と同じNSButtonのactionを通し、起動OFF→ON→OFF→ON→終了を検証する。
+            for seconds in [2, 6, 10] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(seconds)) { self.panel.powerButton.performClick(nil) }
+            }
+            for seconds in [1, 5, 9, 13] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(seconds)) { self.recordLaunch(path, seconds: seconds) }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 14) { NSApp.terminate(nil) }
         }
     }
 
+    private func argument(after flag: String) -> String? {
+        guard let i = arguments.firstIndex(of: flag), arguments.count > i + 1 else { return nil }
+        return arguments[i + 1]
+    }
+
+    private func startTimer() {
+        let timer = DispatchSource.makeTimerSource(queue: worker)
+        timer.schedule(deadline: .now(), repeating: 2, leeway: .milliseconds(200))
+        timer.setEventHandler { [weak self] in self?.reconcile() }
+        timer.resume()
+        self.timer = timer
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        openWindow(); return true
+        openPopover(); return true
     }
 
     @objc private func woke() { worker.async { [weak self] in self?.reconcile() } }
 
     private func reconcile() {
         guard !stopping else { return }
-        let state = session.reconcile()
-        if lastDetail != state.detail { log(state.detail); lastDetail = state.detail }
+        let state = protection.reconcile()
+        let detail = state.enabled ? (state.protection?.detail ?? "保護を確認中") : "保護OFF"
+        if lastDetail != detail { log(detail); lastDetail = detail }
         DispatchQueue.main.async { [weak self] in self?.show(state) }
     }
 
-    private func buildMenu() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "moon.zzz", accessibilityDescription: "AntiSleep")
-        statusItem.button?.toolTip = "AntiSleep — 保護を確認中"
-        let menu = NSMenu()
-        menuStatus = menu.addItem(withTitle: "保護を確認中…", action: nil, keyEquivalent: "")
-        menu.addItem(.separator())
-        addItem(menu, "AntiSleepを開く", #selector(openWindow))
-        addItem(menu, "画面を消灯", #selector(turnOffDisplay))
-        menu.addItem(.separator())
-        addItem(menu, "終了して元の設定へ戻す", #selector(quit), key: "q")
-        statusItem.menu = menu
+    private func show(_ state: ProtectionSwitchState) {
+        latestState = state
+        panel.show(state, preview: preview)
+        popover.contentSize = panel.contentSize
+        panel.setFrameSize(popover.contentSize)
+        statusItem?.button?.image = BoltIcon.make(on: state.confirmedOn)
+        statusItem?.button?.toolTip = "AntiSleep — " + (state.confirmedOn ? "スリープ防止ON" : (state.enabled ? "保護の確認が必要" : "OFF"))
     }
 
-    private func addItem(_ menu: NSMenu, _ title: String, _ action: Selector, key: String = "") {
-        let item = menu.addItem(withTitle: title, action: action, keyEquivalent: key)
-        item.target = self
-    }
-
-    private func label(_ text: String, size: CGFloat = 13, weight: NSFont.Weight = .regular) -> NSTextField {
-        let field = NSTextField(wrappingLabelWithString: text)
-        field.font = .systemFont(ofSize: size, weight: weight)
-        return field
-    }
-
-    private func buildWindow() {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 444, height: 450),
-                          styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
-        window.title = preview ? "AntiSleep — プレビュー" : "AntiSleep"
-        window.isReleasedWhenClosed = false
-        window.center()
-        let content = WindowContentView()
-        window.contentView = content
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 17
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 24),
-            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 28),
-            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -28)
-        ])
-        stack.addArrangedSubview(label("AntiSleep", size: 26, weight: .bold))
-        headline = label("保護を確認しています…", size: 17, weight: .semibold)
-        stack.addArrangedSubview(headline)
-        let hint = label("このアプリの起動中は、ふたを閉じても処理を継続。\n画面の消灯は妨げません。", size: 13)
-        hint.textColor = .secondaryLabelColor
-        stack.addArrangedSubview(hint)
-        idleValue = label("確認中")
-        lidValue = label("確認中")
-        let grid = NSGridView(views: [
-            [label("本体の自動スリープ"), idleValue],
-            [label("ふたを閉じたとき"), lidValue],
-            [label("画面"), label("消灯を許可・ふた閉じで消灯")],
-            [label("Caps Lock"), label("保護には影響しません")]
-        ])
-        grid.rowSpacing = 11
-        grid.columnSpacing = 18
-        stack.addArrangedSubview(grid)
-        message = label("")
-        message.textColor = .secondaryLabelColor
-        message.heightAnchor.constraint(greaterThanOrEqualToConstant: 38).isActive = true
-        stack.addArrangedSubview(message)
-        let buttons = NSStackView()
-        buttons.spacing = 8
-        buttons.addArrangedSubview(NSButton(title: "画面を消灯", target: self, action: #selector(turnOffDisplay)))
-        buttons.addArrangedSubview(NSButton(title: "ヘルパーを設定…", target: self, action: #selector(installHelper)))
-        stack.addArrangedSubview(buttons)
-        stack.addArrangedSubview(NSButton(title: "終了して元の設定へ戻す", target: self, action: #selector(quit)))
-        let note = label("ウィンドウを閉じても保護は続きます。終了はメニューバーから。", size: 11)
-        note.textColor = .tertiaryLabelColor
-        stack.addArrangedSubview(note)
-        for view in [hint, message!, note] {
-            view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+    @objc private func togglePower() {
+        if preview {
+            let enabled = !latestState.enabled
+            show(ProtectionSwitchState(enabled: enabled, protection: enabled
+                ? ProtectionStatus(idleProtected: true, lidProtected: true, detail: "プレビュー") : nil))
+            return
         }
-    }
-
-    private func show(_ state: ProtectionStatus) {
-        latestStatus = state
-        let protected = state.idleProtected && state.lidProtected
-        headline.stringValue = protected ? "起動中 · 本体のスリープを防止" : "保護に確認が必要です"
-        headline.textColor = protected ? .systemGreen : .systemOrange
-        idleValue.stringValue = state.idleProtected ? "防止中" : "未適用"
-        lidValue.stringValue = state.lidProtected ? "本体は保護中" : "未適用"
-        message.stringValue = state.detail
-        menuStatus.title = protected ? "本体のスリープを防止中" : "ふた閉じ保護を確認してください"
-        statusItem.button?.image = NSImage(systemSymbolName: protected ? "shield.checkered" : "exclamationmark.shield",
-                                           accessibilityDescription: headline.stringValue)
-        statusItem.button?.toolTip = "AntiSleep — \(headline.stringValue)"
-    }
-
-    @objc private func openWindow() {
-        worker.async { [weak self] in self?.log("明示的なウィンドウ表示要求") }
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
-    @objc private func turnOffDisplay() {
-        guard !preview else { return }
+        let requested = !latestState.enabled
+        panel.setWorking(true)
         worker.async { [weak self] in
-            guard let self else { return }
-            if !self.power.turnDisplaysOff() {
-                DispatchQueue.main.async { self.alert("画面を消灯できませんでした。", detail: "本体の保護は継続しています。") }
+            guard let self, !self.stopping else { return }
+            let state = self.protection.setEnabled(requested)
+            self.log("保護切替 要求=\(requested) 適用確認=\(state.confirmedOn) 復元失敗=\(state.restoreFailed)")
+            DispatchQueue.main.async {
+                self.panel.setWorking(false)
+                self.show(state)
             }
         }
+    }
+
+    @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
+        if NSApp.currentEvent?.type == .rightMouseUp {
+            popover.performClose(nil)
+            exitMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.minY), in: sender)
+        } else if popover.isShown {
+            popover.performClose(nil)
+        } else {
+            openPopover()
+        }
+    }
+
+    private func openPopover() {
+        guard let button = statusItem?.button else { return }
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func installHelper() {
@@ -219,21 +200,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if preview { return .terminateNow }
+        panel.setWorking(true)
         worker.async { [weak self] in
             guard let self else { return }
             self.stopping = true
             self.timer?.cancel()
-            let restored = self.session.stop()
+            let restored = self.protection.shutdown()
             self.log("終了時の復元 成功=\(restored)")
-            // 終了通知元のイベントループに依存せず、復元完了後に終了する。
             if restored { exit(0) }
             self.stopping = false
-            let timer = DispatchSource.makeTimerSource(queue: self.worker)
-            timer.schedule(deadline: .now(), repeating: 2)
-            timer.setEventHandler { [weak self] in self?.reconcile() }
-            timer.resume()
-            self.timer = timer
+            self.startTimer()
             RunLoop.main.perform(inModes: [.common]) {
+                self.panel.setWorking(false)
                 self.alert("元の設定に戻せなかったため、終了を中止しました。", detail: "ヘルパーを設定し直してから、もう一度終了してください。")
                 NSApp.reply(toApplicationShouldTerminate: false)
             }
@@ -265,34 +243,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func renderPreview(_ path: String) {
-        let result = Command.run("/usr/sbin/screencapture", ["-x", "-l", String(window.windowNumber), path])
-        if result.status != 0 {
-            log("画面収録は利用不可。アプリ自身のビューを画像化: \(result.output.trimmingCharacters(in: .whitespacesAndNewlines))")
-            guard let view = window.contentView, let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
-            view.cacheDisplay(in: view.bounds, to: bitmap)
-            try? bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
-        }
-    }
-
     private func recordLaunch(_ path: String, seconds: Int) {
+        let assertions = Command.run("/usr/bin/pmset", ["-g", "assertions"]).output
+        let own = assertions.components(separatedBy: "\n   pid ").filter { $0.hasPrefix("\(getpid())(") }.joined()
+        let menuFrame = statusItem?.button?.window?.frame
+        let menuScreen = statusItem?.button?.window?.screen
+        let rightArea = menuScreen?.auxiliaryTopRightArea ?? menuScreen?.frame
+        let onRight: Bool
+        if let frame = menuFrame, let area = rightArea {
+            onRight = frame.minX >= area.minX && frame.maxX <= area.maxX + 1
+        } else {
+            onRight = false
+        }
         launchSnapshots.append([
-            "seconds": seconds,
-            "windowVisible": window.isVisible,
-            "appActive": NSApp.isActive,
-            "idleProtected": latestStatus?.idleProtected ?? false,
-            "lidProtected": latestStatus?.lidProtected ?? false
+            "seconds": seconds, "pid": getpid(),
+            "menuBarItemCreated": statusItem != nil,
+            "menuBarVisible": statusItem?.isVisible ?? false,
+            "menuBarOnRight": onRight,
+            "menuBarX": statusItem?.button?.window?.frame.minX as Any? ?? NSNull(),
+            "menuBarWidth": statusItem?.button?.window?.frame.width as Any? ?? NSNull(),
+            "windowVisible": popover.isShown, "appActive": NSApp.isActive,
+            "enabled": latestState.enabled, "confirmedOn": latestState.confirmedOn,
+            "sleepDisabled": power.readSleepDisabled() as Any? ?? NSNull(),
+            "idleProtected": own.contains("PreventUserIdleSystemSleep"),
+            "displayAssertion": own.contains("PreventUserIdleDisplaySleep")
         ])
         if let data = try? JSONSerialization.data(withJSONObject: launchSnapshots, options: [.prettyPrinted, .sortedKeys]) {
             try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
         }
-    }
-}
-
-private final class WindowContentView: NSView {
-    override var isOpaque: Bool { true }
-    override func draw(_ dirtyRect: NSRect) {
-        NSColor.windowBackgroundColor.setFill()
-        dirtyRect.fill()
     }
 }
