@@ -57,7 +57,7 @@ def monitor(parent):
 
 def launch():
     global process, monitor_pid
-    process = subprocess.Popen([str(binary), "--window-id"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    process = subprocess.Popen([str(binary), "--window-id", "--show-window"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
     wait_for(disabled, "起動後にふた閉じ保護が適用されません")
     window_id = process.stdout.readline().strip()
     owned = owner_assertions(process.pid)

@@ -17,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var stopping = false
     private var lastDetail = ""
     private var signalSources: [DispatchSourceSignal] = []
+    private var latestStatus: ProtectionStatus?
+    private var launchSnapshots: [[String: Any]] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -52,7 +54,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(woke), name: NSWorkspace.didWakeNotification, object: nil)
-        openWindow()
+        if preview || ProcessInfo.processInfo.arguments.contains("--show-window") {
+            openWindow()
+        }
+        if let index = ProcessInfo.processInfo.arguments.firstIndex(of: "--record-launch"),
+           ProcessInfo.processInfo.arguments.count > index + 1 {
+            let path = ProcessInfo.processInfo.arguments[index + 1]
+            for seconds in [0, 2, 8] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(seconds)) { [weak self] in
+                    self?.recordLaunch(path, seconds: seconds)
+                }
+            }
+        }
         if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "--render-preview"),
            ProcessInfo.processInfo.arguments.count > i + 1, preview {
             let path = ProcessInfo.processInfo.arguments[i + 1]
@@ -156,6 +169,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func show(_ state: ProtectionStatus) {
+        latestStatus = state
         let protected = state.idleProtected && state.lidProtected
         headline.stringValue = protected ? "起動中 · 本体のスリープを防止" : "保護に確認が必要です"
         headline.textColor = protected ? .systemGreen : .systemOrange
@@ -169,6 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openWindow() {
+        worker.async { [weak self] in self?.log("明示的なウィンドウ表示要求") }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -257,6 +272,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let view = window.contentView, let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
             view.cacheDisplay(in: view.bounds, to: bitmap)
             try? bitmap.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+        }
+    }
+
+    private func recordLaunch(_ path: String, seconds: Int) {
+        launchSnapshots.append([
+            "seconds": seconds,
+            "windowVisible": window.isVisible,
+            "appActive": NSApp.isActive,
+            "idleProtected": latestStatus?.idleProtected ?? false,
+            "lidProtected": latestStatus?.lidProtected ?? false
+        ])
+        if let data = try? JSONSerialization.data(withJSONObject: launchSnapshots, options: [.prettyPrinted, .sortedKeys]) {
+            try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
         }
     }
 }
