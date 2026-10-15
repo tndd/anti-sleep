@@ -22,6 +22,7 @@ func expectLessThan<T: Comparable>(_ a: T, _ b: T, file: StaticString = #filePat
     if !(a < b) { failure("順序の不一致", file: file, line: line) }
 }
 let suite = ProtectionSessionTests()
+let switches = ProtectionSwitchTests()
 let checks: [(String, () -> Void)] = [
     ("起動で保護・終了で復元", suite.testLaunchProtectsWithoutKeyboardInputAndQuitRestores),
     ("設定変更より先に復元監視", suite.testRecoveryIsArmedBeforeChangingSystemSetting),
@@ -38,7 +39,14 @@ let checks: [(String, () -> Void)] = [
     ("復元失敗時は終了しない", suite.testFailedRestoreKeepsIdleAssertionAndMonitorAlive),
     ("防止要求の失敗を検知", suite.testIdleAssertionFailureIsNotReportedAsCompleteProtection),
     ("ふたの状態不明時は消灯しない", suite.testUnknownLidStateDoesNotBlankDisplays),
-    ("設定値の解析", suite.testSleepSettingParsingRequiresExplicitValue)
+    ("設定値の解析", suite.testSleepSettingParsingRequiresExplicitValue),
+    ("OFF起動では電源設定を変更しない", switches.testOffLaunchDoesNotTouchPowerSettings),
+    ("アプリを終了せずONとOFFを切り替え", switches.testOnOffChangesProtectionWhileAppStaysAlive),
+    ("再度ONにするときの設定を正しく復元", switches.testNextActivationCapturesFreshBaseline),
+    ("OFF失敗時にONを保持する", switches.testOffRestoreFailureKeepsOn),
+    ("ONで終了すると復元し次回はOFF", switches.testQuitOnRestoresAndNextLaunchAlwaysStartsOff),
+    ("OFFで終了するときは設定に触れない", switches.testOffQuitHasNoPowerSideEffects),
+    ("適用未確認のONを成功扱いしない", switches.testRequestedOnIsNotGreenUntilBothProtectionsAreConfirmed)
 ]
 for (name, check) in checks {
     let before = failures

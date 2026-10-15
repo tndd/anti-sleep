@@ -57,15 +57,15 @@ def monitor(parent):
 
 def launch():
     global process, monitor_pid
-    process = subprocess.Popen([str(binary), "--window-id", "--show-window"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    process = subprocess.Popen([str(binary), "--verify-start-on"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
     wait_for(disabled, "起動後にふた閉じ保護が適用されません")
-    window_id = process.stdout.readline().strip()
+
     owned = owner_assertions(process.pid)
     assert "PreventUserIdleSystemSleep" in owned, "アプリ自身の防止要求がありません"
     assert "PreventUserIdleDisplaySleep" not in owned, "画面点灯要求が登録されています"
     monitor_pid = monitor(process.pid)
     assert monitor_pid, "復元監視プロセスがありません"
-    return window_id
+
 
 
 try:
@@ -76,13 +76,9 @@ try:
     helper = next((p for p in helpers if Path(p).is_file()), None)
     assert helper, "管理者ヘルパーがありません"
 
-    window_id = launch()
+    launch()
     report["checks"]["起動時に独立した防止要求とSleepDisabled=1"] = "PASS"
     report["checks"]["画面点灯要求なし"] = "PASS"
-    shot = args.report.parent / "live-window.png"
-    result = subprocess.run(["/usr/sbin/screencapture", "-x", "-l", window_id, str(shot)], capture_output=True, text=True)
-    report["native_window_capture"] = "取得済み" if result.returncode == 0 else "画面収録権限がなく取得不可。別途アプリ自身のビュー描画を確認"
-
     command("/usr/bin/sudo", "-n", helper, "off")
     wait_for(disabled, "解除された保護が再適用されません")
     report["checks"]["実際の設定解除から再適用"] = "PASS"

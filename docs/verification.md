@@ -2,7 +2,34 @@
 
 2026年10月15日。Apple Silicon Mac / macOS 15.8.1で確認。
 
-## 確認済み
+## 0.2.0：起動OFFと電源ボタン
+
+アプリの常駐と保護のON/OFFを分離。前回状態は保存せず、通常起動は常にOFF。
+OFFは灰色、適用確認済みのONは緑の稲妻と電源ボタンを表示する。
+
+| 検証 | 結果 |
+| --- | --- |
+| 状態遷移の単体検証 | 23項目すべて成功。OFF無副作用・同一インスタンスの切り替え・再ON時の基準再取得・復元失敗時の保持を含む |
+| Releaseビルド・署名 | 成功。アプリと同梱ヘルパーのdeep / strict検証成功 |
+| ネイティブUI | OFFとONをアプリ自身のビューからPNG化し、稲妻の色・電源ボタン・文字・配置を目視確認 |
+| 実際の電源ボタンaction | 同一アプリのNSButton.performClickでOFF→ON→OFF→ONを確認。設定・防止要求が表示と一致 |
+| 終了と再起動 | ONで終了するとSleepDisabled=0へ復元。再起動直後・2秒後・8秒後もOFF・防止要求なし |
+| 自動ポップアップの回帰 | 通常起動・切り替え・定期確認でパネル非表示、アプリ非アクティブ |
+| 明示表示 | 実際のNSPopoverが表示され、OFFのままであることを確認 |
+| 配布版 | ZIP破損検査・署名検証・配布先アプリのOFF常駐（直後・2秒後・8秒後）を確認 |
+| 保護中の復元経路 | 外部設定解除からの再適用・監視再起動・通常終了・本体強制終了後の復元を再検証 |
+| 画面 | ON/OFFとも点灯維持要求なし。今回の切り替え試験では強制消灯・物理的なふた操作は行っていない |
+
+切り替え試験の操作は、非表示の同一パネルにある実ボタンのactionを通した自動操作。
+ユーザーによるメニューバーのマウスクリック操作そのものの試験とは区別する。
+既存版を正常終了してから実施し、更新中の一時的なcaffeinateは終了した。
+ふた閉じ中の継続動作は、変更していないProtectionSessionとSystemPowerについての
+下記0.1.0実機結果を引き継ぐ。0.2.0で物理的なふた閉じ試験は再実施していない。
+
+## 0.1.0：以前の確認結果
+
+以下は起動と同時にONになった旧仕様の検証記録。
+0.2.0では起動OFFに変更し、保護処理をON時だけ呼び出す。
 
 | 検証 | 結果 |
 | --- | --- |
@@ -36,7 +63,7 @@
 メニューバーへの常駐だけに変更した。表示が必要な検証は明示的な起動オプションで開く。
 更新中も一時的な防止要求で保護をつなぎ、更新後のアプリ自身の保護を確認してから解除した。
 
-## 最後の実機試験
+## 0.1.0の最後の実機試験
 
 ユーザーによる実際のふた閉じ・開閉操作で検証した。
 起動中のAntiSleepを再起動せず、caffeinateが存在しない状態で測定した。
@@ -73,6 +100,7 @@ AntiSleepと旧版Capsomniaを終了し、開始時点のSleepDisabled=0を確�
 既存の設定を保護するため、開始時点の状態が違う場合は検証を中止する。
 
 ```sh
+python3 scripts/verify-toggle.py dist/AntiSleep.app test-results/toggle-check.json
 python3 scripts/verify-system.py dist/AntiSleep.app test-results/system-check.json
 ```
 
@@ -83,7 +111,9 @@ python3 scripts/verify-system.py dist/AntiSleep.app test-results/system-check.js
 python3 scripts/verify-system.py dist/AntiSleep.app test-results/screen-off-check.json --screen-off
 ```
 
-実際のふた閉じ試験は、AntiSleepが稼働している状態で対象PIDを指定して開始する。
+verify-system.pyは、検証専用の明示オプションで保護をONにする。通常起動の仕様はOFFのまま。
+
+実際のふた閉じ試験は、パネルでONを確認した状態で対象PIDを指定して開始する。
 ARMEDと表示されたら、ふたを閉じて90秒待ってから開く。設定の変更・アプリの再起動・画面の前面表示は行わない。
 
 ```sh
