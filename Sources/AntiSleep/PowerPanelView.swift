@@ -45,9 +45,8 @@ final class PowerCircleButton: NSButton {
 
 final class PowerPanelView: NSView {
     let powerButton = PowerCircleButton(frame: .zero)
-    let screenButton = NSButton(title: "画面を消灯", target: nil, action: nil)
     let helperButton = NSButton(title: "ヘルパーを設定…", target: nil, action: nil)
-    let quitButton = NSButton(title: "終了", target: nil, action: nil)
+    private let stack = NSStackView()
     private let glyph = NSImageView()
     private let stateLabel = NSTextField(labelWithString: "OFF")
     private let detail = NSTextField(wrappingLabelWithString: "電源ボタンでスリープ防止をONにできます。")
@@ -56,7 +55,6 @@ final class PowerPanelView: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 12
@@ -64,6 +62,7 @@ final class PowerPanelView: NSView {
         addSubview(stack)
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: topAnchor, constant: 20),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -20),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 22),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -22)
         ])
@@ -85,24 +84,12 @@ final class PowerPanelView: NSView {
         detail.alignment = .center
         detail.font = .systemFont(ofSize: 12)
         detail.textColor = .secondaryLabelColor
-        detail.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        detail.preferredMaxLayoutWidth = 256
         stack.addArrangedSubview(detail)
         detail.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         previewNote.font = .systemFont(ofSize: 10)
         previewNote.textColor = .secondaryLabelColor
         stack.addArrangedSubview(previewNote)
-        let divider = NSBox()
-        divider.boxType = .separator
-        stack.addArrangedSubview(divider)
-        divider.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        let footer = NSStackView()
-        footer.spacing = 8
-        for button in [screenButton, quitButton] {
-            button.controlSize = .small
-            button.font = .systemFont(ofSize: 11)
-            footer.addArrangedSubview(button)
-        }
-        stack.addArrangedSubview(footer)
         helperButton.controlSize = .small
         helperButton.font = .systemFont(ofSize: 11)
         helperButton.isHidden = true
@@ -115,6 +102,8 @@ final class PowerPanelView: NSView {
         NSColor.windowBackgroundColor.setFill()
         dirtyRect.fill()
     }
+
+    var contentSize: NSSize { NSSize(width: 300, height: fittingSize.height) }
 
     func show(_ state: ProtectionSwitchState, preview: Bool = false) {
         powerButton.confirmedOn = state.confirmedOn
@@ -132,7 +121,8 @@ final class PowerPanelView: NSView {
             detail.stringValue = state.protection?.detail ?? "保護を確認しています。"
         }
         helperButton.isHidden = !state.enabled || state.confirmedOn
-        previewNote.stringValue = preview ? "プレビュー・電源設定は変更しません" : "アプリを開くだけではONになりません"
+        previewNote.stringValue = "プレビュー・電源設定は変更しません"
+        previewNote.isHidden = !preview
         powerButton.setAccessibilityLabel(state.enabled ? "スリープ防止をOFFにする" : "スリープ防止をONにする")
     }
 

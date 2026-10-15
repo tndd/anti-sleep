@@ -10,7 +10,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var timer: DispatchSourceTimer?
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
-    private let panel = PowerPanelView(frame: NSRect(x: 0, y: 0, width: 300, height: 410))
+    private lazy var exitMenu: NSMenu = {
+        let menu = NSMenu()
+        let item = menu.addItem(withTitle: "終了", action: #selector(quit), keyEquivalent: "q")
+        item.target = self
+        return menu
+    }()
+    private let panel = PowerPanelView(frame: NSRect(x: 0, y: 0, width: 300, height: 330))
     private var renderWindow: NSWindow?
     private var stopping = false
     private var lastDetail = ""
@@ -30,7 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.autosaveName = preview ? "AntiSleepPreview" : "AntiSleep"
             item.isVisible = true
             item.button?.target = self
-            item.button?.action = #selector(togglePopover)
+            item.button?.action = #selector(statusItemClicked)
             item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
             statusItem = item
         }
@@ -39,13 +45,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.contentViewController = controller
         popover.contentSize = panel.frame.size
         popover.behavior = .transient
-        for (button, action) in [(panel.powerButton, #selector(togglePower)),
-                                 (panel.screenButton, #selector(turnOffDisplay)),
-                                 (panel.helperButton, #selector(installHelper)),
-                                 (panel.quitButton, #selector(quit))] {
-            button.target = self
-            button.action = action
-        }
+        panel.powerButton.target = self
+        panel.powerButton.action = #selector(togglePower)
+        panel.helperButton.target = self
+        panel.helperButton.action = #selector(installHelper)
         for number in [SIGTERM, SIGINT] {
             signal(number, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: number, queue: .main)
@@ -133,6 +136,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func show(_ state: ProtectionSwitchState) {
         latestState = state
         panel.show(state, preview: preview)
+        popover.contentSize = panel.contentSize
+        panel.setFrameSize(popover.contentSize)
         statusItem?.button?.image = BoltIcon.make(on: state.confirmedOn)
         statusItem?.button?.toolTip = "AntiSleep — " + (state.confirmedOn ? "スリープ防止ON" : (state.enabled ? "保護の確認が必要" : "OFF"))
     }
@@ -157,25 +162,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc private func togglePopover() {
-        if popover.isShown { popover.performClose(nil) } else { openPopover() }
+    @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
+        if NSApp.currentEvent?.type == .rightMouseUp {
+            popover.performClose(nil)
+            exitMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.minY), in: sender)
+        } else if popover.isShown {
+            popover.performClose(nil)
+        } else {
+            openPopover()
+        }
     }
 
     private func openPopover() {
         guard let button = statusItem?.button else { return }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         NSApp.activate(ignoringOtherApps: true)
-    }
-
-    @objc private func turnOffDisplay() {
-        guard !preview else { return }
-        popover.performClose(nil)
-        worker.async { [weak self] in
-            guard let self else { return }
-            if !self.power.turnDisplaysOff() {
-                DispatchQueue.main.async { self.alert("画面を消灯できませんでした。", detail: "電源設定とヘルパーを確認してください。") }
-            }
-        }
     }
 
     @objc private func installHelper() {
