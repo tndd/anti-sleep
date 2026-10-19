@@ -111,7 +111,7 @@ def launch(name, app, expected_on, expected_choice, click=False, preview=False):
             assert not state["displayAssertion"], state
             assert state["startsOn"] == expected_choice, state
             if click and not preview:
-                assert state["panelWidth"] == 300 and state["panelHeight"] == 324, state
+                assert state["panelWidth"] == 300 and state["panelHeight"] == 326, state
         if click:
             process.communicate(timeout=15)
         results[name] = samples

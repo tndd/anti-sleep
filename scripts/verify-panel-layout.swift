@@ -48,14 +48,19 @@ struct PanelLayoutChecks {
                 "height": panel.bounds.height, "gapAbove": gap, "gapBelow": bottom,
                 "rowHeight": rowFrame.height]
             results.append(metrics)
-            if let bitmap = panel.bitmapImageRepForCachingDisplay(in: panel.bounds) {
+            // CIの1x画面でも実機と同じ2x描画→1x正規化で画素を比較する。
+            if let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil,
+                pixelsWide: Int(panel.bounds.width * 2), pixelsHigh: Int(panel.bounds.height * 2),
+                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) {
+                bitmap.size = panel.bounds.size
                 panel.cacheDisplay(in: panel.bounds, to: bitmap)
                 try bitmap.representation(using: .png, properties: [:])!.write(to: output.appendingPathComponent(name + ".png"))
             }
             if abs(bottom - 22) > 0.5 { failures.append("\(name): 行の下余白\(bottom)pt（期待22pt）") }
             if gap < 11.5 { failures.append("\(name): 上余白\(gap)pt（最小12pt）") }
             if name == "off" || name == "on" {
-                if panel.bounds.size != NSSize(width: 300, height: 324) { failures.append("\(name): 通常サイズの不一致") }
+                if panel.bounds.size != NSSize(width: 300, height: 326) { failures.append("\(name): 通常サイズの不一致") }
                 if gap > 14 { failures.append("\(name): 上余白\(gap)pt（期待12pt前後）") }
             }
             if !panel.helperButton.isHidden {

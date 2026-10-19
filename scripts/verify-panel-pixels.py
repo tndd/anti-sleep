@@ -78,13 +78,18 @@ def measure(source):
 
     detail = bounds(60, 240, 220, 263)
     toggle = bounds(90, 210, 263, height)
+    first_line = bounds(60, 240, 220, 240)
+    startup_label = bounds(80, 170, 263, height)
+    line_height = first_line["bottom"] - first_line["top"] + 1
+    label_height = startup_label["bottom"] - startup_label["top"] + 1
     above = toggle["top"] - detail["bottom"] - 1
     below = height - toggle["bottom"] - 1
     return {"image": str(normalized), "sha256": hashlib.sha256(normalized.read_bytes()).hexdigest(),
             "size_px": [width, height], "background_rgb": list(background), "rgb_threshold": 8,
             "coordinates": "zero based; inclusive", "detail": detail, "toggle": toggle,
+            "detail_first_line_ink_height_px": line_height, "startup_label_ink_height_px": label_height,
             "above_px": above, "below_px": below,
-            "result": "PASS" if above == below == 28 else "FAIL"}
+            "result": "PASS" if above == below == 28 and line_height == label_height == 12 else "FAIL"}
 
 
 if __name__ == "__main__":
