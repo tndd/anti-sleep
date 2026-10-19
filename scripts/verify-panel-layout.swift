@@ -1,6 +1,11 @@
 import AppKit
 import AntiSleepCore
 
+// 画面倍率が1xのCIでも、実機と同じRetina用コントロールを描画する。
+final class RetinaLayoutWindow: NSWindow {
+    override var backingScaleFactor: CGFloat { 2 }
+}
+
 /// 実際のAppKitビューを配置し、承認モックの余白とエラー表示の非重複を確認する。
 @main
 struct PanelLayoutChecks {
@@ -24,7 +29,7 @@ struct PanelLayoutChecks {
         var results: [[String: Any]] = []
         for (name, state, preview) in modes {
             let panel = PowerPanelView(frame: NSRect(x: 0, y: 0, width: 300, height: 330))
-            let window = NSWindow(contentRect: panel.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            let window = RetinaLayoutWindow(contentRect: panel.frame, styleMask: [.borderless], backing: .buffered, defer: false)
             window.appearance = NSAppearance(named: .darkAqua)
             window.contentView = panel
             panel.show(state, preview: preview)
@@ -46,7 +51,7 @@ struct PanelLayoutChecks {
             let bottom = rowFrame.minY
             let metrics: [String: Any] = ["state": name, "width": panel.bounds.width,
                 "height": panel.bounds.height, "gapAbove": gap, "gapBelow": bottom,
-                "rowHeight": rowFrame.height]
+                "rowHeight": rowFrame.height, "windowBackingScale": window.backingScaleFactor]
             results.append(metrics)
             // CIの1x画面でも実機と同じ2x描画→1x正規化で画素を比較する。
             if let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil,
