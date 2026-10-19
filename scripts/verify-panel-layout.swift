@@ -51,16 +51,16 @@ struct PanelLayoutChecks {
                 panel.cacheDisplay(in: panel.bounds, to: bitmap)
                 try bitmap.representation(using: .png, properties: [:])!.write(to: output.appendingPathComponent(name + ".png"))
             }
-            if abs(bottom - 20) > 0.5 { failures.append("\(name): 下余白\(bottom)pt（期待20pt）") }
-            if gap < 19.5 { failures.append("\(name): 上余白\(gap)pt（最小20pt）") }
+            if abs(bottom - 12) > 0.5 { failures.append("\(name): 下余白\(bottom)pt（期待12pt）") }
+            if gap < 11.5 { failures.append("\(name): 上余白\(gap)pt（最小12pt）") }
             if name == "off" || name == "on" {
-                if panel.bounds.size != NSSize(width: 300, height: 330) { failures.append("\(name): 通常サイズの不一致") }
-                if gap > 22 { failures.append("\(name): 上余白\(gap)pt（期待20pt前後）") }
+                if panel.bounds.size != NSSize(width: 300, height: 314) { failures.append("\(name): 通常サイズの不一致") }
+                if gap > 14 { failures.append("\(name): 上余白\(gap)pt（期待12pt前後）") }
             }
             if !panel.helperButton.isHidden {
                 let helperFrame = panel.convert(panel.helperButton.alignmentRect(forFrame: panel.helperButton.frame),
                                                 from: panel.helperButton.superview)
-                if helperFrame.minY < rowFrame.maxY + 19.5 { failures.append("\(name): ヘルパー操作と起動時設定の重複") }
+                if helperFrame.minY < rowFrame.maxY + 11.5 { failures.append("\(name): ヘルパー操作と起動時設定の重複") }
             }
         }
         let report: [String: Any] = ["result": failures.isEmpty ? "PASS" : "FAIL", "states": results, "failures": failures]

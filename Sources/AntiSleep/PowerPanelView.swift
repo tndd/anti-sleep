@@ -85,7 +85,7 @@ final class PowerPanelView: NSView {
         addSubview(startupRow)
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: topAnchor, constant: 20),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: startupRow.topAnchor, constant: -20),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: startupRow.topAnchor, constant: -12),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 22),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -22)
         ])
@@ -132,7 +132,7 @@ final class PowerPanelView: NSView {
         startupRow.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             startupRow.centerXAnchor.constraint(equalTo: centerXAnchor),
-            startupRow.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -20),
+            startupRow.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
             startupRow.heightAnchor.constraint(equalToConstant: 28)
         ])
         quitButton.isBordered = false
@@ -156,7 +156,7 @@ final class PowerPanelView: NSView {
         dirtyRect.fill()
     }
 
-    var contentSize: NSSize { NSSize(width: 300, height: max(330, fittingSize.height)) }
+    var contentSize: NSSize { NSSize(width: 300, height: max(314, fittingSize.height)) }
 
     func showStartupOn(_ value: Bool) {
         startupSwitch.state = value ? .on : .off
