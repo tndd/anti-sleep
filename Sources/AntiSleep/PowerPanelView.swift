@@ -64,6 +64,7 @@ final class PowerCircleButton: NSButton {
 
 final class PowerPanelView: NSView {
     let powerButton = PowerCircleButton(frame: .zero)
+    let startupSwitch = NSSwitch()
     let helperButton = NSButton(title: "ヘルパーを設定…", target: nil, action: nil)
     let quitButton = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "終了")!, target: nil, action: nil)
     private let stack = NSStackView()
@@ -77,7 +78,7 @@ final class PowerPanelView: NSView {
         super.init(frame: frame)
         stack.orientation = .vertical
         stack.alignment = .centerX
-        stack.spacing = 12
+        stack.spacing = 8
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -114,6 +115,19 @@ final class PowerPanelView: NSView {
         helperButton.font = .systemFont(ofSize: 11)
         helperButton.isHidden = true
         stack.addArrangedSubview(helperButton)
+        let startupRow = NSStackView()
+        startupRow.orientation = .horizontal
+        startupRow.alignment = .centerY
+        startupRow.spacing = 8
+        let startupLabel = NSTextField(labelWithString: "起動時にON")
+        startupLabel.font = .systemFont(ofSize: 12)
+        startupLabel.textColor = .secondaryLabelColor
+        startupSwitch.controlSize = .mini
+        startupSwitch.setAccessibilityLabel("起動時にON")
+        startupSwitch.setAccessibilityHelp("次回のアプリ起動時から適用します。現在のスリープ防止状態は変更しません。")
+        startupRow.addArrangedSubview(startupLabel)
+        startupRow.addArrangedSubview(startupSwitch)
+        stack.addArrangedSubview(startupRow)
         quitButton.isBordered = false
         quitButton.contentTintColor = .secondaryLabelColor
         quitButton.toolTip = "設定を元に戻してAntiSleepを終了"
@@ -135,7 +149,12 @@ final class PowerPanelView: NSView {
         dirtyRect.fill()
     }
 
-    var contentSize: NSSize { NSSize(width: 300, height: fittingSize.height) }
+    var contentSize: NSSize { NSSize(width: 300, height: max(330, fittingSize.height)) }
+
+    func showStartupOn(_ value: Bool) {
+        startupSwitch.state = value ? .on : .off
+        startupSwitch.toolTip = "次回は\(value ? "ON" : "OFF")で起動します。現在の状態は変更しません。"
+    }
 
     func show(_ state: ProtectionSwitchState, preview: Bool = false) {
         powerButton.confirmedOn = state.confirmedOn
@@ -146,7 +165,7 @@ final class PowerPanelView: NSView {
         if state.restoreFailed {
             detail.stringValue = "設定を元に戻せなかったため、ONを維持しています。もう一度お試しください。"
         } else if !state.enabled {
-            detail.stringValue = "電源ボタンでスリープ防止をONにできます。"
+            detail.stringValue = "電源ボタンでスリープ防止を\nONにできます。"
         } else if state.confirmedOn {
             detail.stringValue = "ふたを閉じても処理を継続。\n画面は消灯できます。"
         } else {

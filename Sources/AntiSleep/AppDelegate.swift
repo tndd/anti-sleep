@@ -4,6 +4,8 @@ import AntiSleepCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let arguments = ProcessInfo.processInfo.arguments
     private var preview: Bool { arguments.contains("--preview") }
+    private let startupSettings = StartupSettings()
+    private var previewStartsOn = false
     private let worker = DispatchQueue(label: "app.antisleep.protection")
     private let power = SystemPower()
     private lazy var protection = ProtectionSwitch(makeSession: { ProtectionSession(backend: self.power) })
@@ -54,6 +56,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.helperButton.action = #selector(installHelper)
         panel.quitButton.target = self
         panel.quitButton.action = #selector(quit)
+        panel.startupSwitch.target = self
+        panel.startupSwitch.action = #selector(changeStartup)
+        panel.showStartupOn(preview ? previewStartsOn : startupSettings.startsOn)
         for number in [SIGTERM, SIGINT] {
             signal(number, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: number, queue: .main)
@@ -68,13 +73,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if preview {
             if arguments.contains("--preview-on") { togglePower() }
         } else {
-            // 通常起動は常にOFF。検証時だけ明示フラグでONを要求できる。
-            if arguments.contains("--verify-start-on") {
-                worker.async { [weak self] in
-                    guard let self else { return }
-                    let state = self.protection.setEnabled(true)
-                    DispatchQueue.main.async { self.show(state) }
-                }
+            if startupSettings.startsOn || arguments.contains("--verify-start-on") {
+                togglePower()
             }
             startTimer()
         }
@@ -165,6 +165,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.show(state)
             }
         }
+    }
+
+    @objc private func changeStartup() {
+        let startsOn = panel.startupSwitch.state == .on
+        if preview {
+            previewStartsOn = startsOn
+        } else {
+            startupSettings.startsOn = startsOn
+        }
+        panel.showStartupOn(startsOn)
     }
 
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
@@ -272,6 +282,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "menuBarWidth": statusItem?.button?.window?.frame.width as Any? ?? NSNull(),
             "windowVisible": popover.isShown, "appActive": NSApp.isActive,
             "enabled": latestState.enabled, "confirmedOn": latestState.confirmedOn,
+            "startsOn": preview ? previewStartsOn : startupSettings.startsOn,
             "sleepDisabled": power.readSleepDisabled() as Any? ?? NSNull(),
             "idleProtected": own.contains("PreventUserIdleSystemSleep"),
             "displayAssertion": own.contains("PreventUserIdleDisplaySleep")
