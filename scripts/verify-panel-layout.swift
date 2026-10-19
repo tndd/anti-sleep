@@ -25,6 +25,7 @@ struct PanelLayoutChecks {
         for (name, state, preview) in modes {
             let panel = PowerPanelView(frame: NSRect(x: 0, y: 0, width: 300, height: 330))
             let window = NSWindow(contentRect: panel.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            window.appearance = NSAppearance(named: .darkAqua)
             window.contentView = panel
             panel.show(state, preview: preview)
             panel.showStartupOn(true)
@@ -51,10 +52,10 @@ struct PanelLayoutChecks {
                 panel.cacheDisplay(in: panel.bounds, to: bitmap)
                 try bitmap.representation(using: .png, properties: [:])!.write(to: output.appendingPathComponent(name + ".png"))
             }
-            if abs(bottom - 12) > 0.5 { failures.append("\(name): 下余白\(bottom)pt（期待12pt）") }
+            if abs(bottom - 22) > 0.5 { failures.append("\(name): 行の下余白\(bottom)pt（期待22pt）") }
             if gap < 11.5 { failures.append("\(name): 上余白\(gap)pt（最小12pt）") }
             if name == "off" || name == "on" {
-                if panel.bounds.size != NSSize(width: 300, height: 314) { failures.append("\(name): 通常サイズの不一致") }
+                if panel.bounds.size != NSSize(width: 300, height: 324) { failures.append("\(name): 通常サイズの不一致") }
                 if gap > 14 { failures.append("\(name): 上余白\(gap)pt（期待12pt前後）") }
             }
             if !panel.helperButton.isHidden {

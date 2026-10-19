@@ -19,6 +19,7 @@ jobs:
         run: |
           swiftc -I .build/release/Modules Sources/AntiSleep/PowerPanelView.swift scripts/verify-panel-layout.swift .build/release/AntiSleepCore.build/*.o -o .build/AntiSleepLayoutChecks
           .build/AntiSleepLayoutChecks test-results/panel-layout
+          python3 scripts/verify-panel-pixels.py test-results/panel-layout/off.png test-results/panel-layout/on.png --report test-results/panel-layout/pixels.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
