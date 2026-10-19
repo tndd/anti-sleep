@@ -45,6 +45,10 @@ struct PanelLayoutChecks {
                 $0.stringValue.contains("ヘルパーを設定して") || $0.stringValue.contains("設定を元に戻せなかった")
             }!
             let row = panel.startupSwitch.superview!
+            let startupLabel = views.compactMap { $0 as? NSTextField }.first { $0.stringValue == "起動時にON" }!
+            if detail.font?.pointSize != 13 || startupLabel.font?.pointSize != 13 {
+                failures.append("\(name): 説明文・起動時ラベルは13ptが必要")
+            }
             let rowFrame = panel.convert(row.bounds, from: row)
             let detailFrame = panel.convert(detail.bounds, from: detail)
             let gap = detailFrame.minY - rowFrame.maxY

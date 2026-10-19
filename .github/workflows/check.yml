@@ -19,7 +19,8 @@ jobs:
         run: |
           swiftc -I .build/release/Modules Sources/AntiSleep/PowerPanelView.swift scripts/verify-panel-layout.swift .build/release/AntiSleepCore.build/*.o -o .build/AntiSleepLayoutChecks
           .build/AntiSleepLayoutChecks test-results/panel-layout
-          python3 scripts/verify-panel-pixels.py test-results/panel-layout/off.png test-results/panel-layout/on.png --report test-results/panel-layout/pixels.json
+          # CIのOS描画差は1pxまで許容。実機のverify-startup.pyは既定の誤差0で厳密に測定する。
+          python3 scripts/verify-panel-pixels.py test-results/panel-layout/off.png test-results/panel-layout/on.png --report test-results/panel-layout/pixels.json --tolerance 1
       - uses: actions/upload-artifact@v4
         if: always()
         with:

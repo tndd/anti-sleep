@@ -55,7 +55,7 @@ def read_png(path):
     return width, height, channels, rows
 
 
-def measure(source):
+def measure(source, tolerance=0):
     width, height, _, _ = read_png(source)
     normalized = source
     if width != 300:
@@ -84,20 +84,25 @@ def measure(source):
     label_height = startup_label["bottom"] - startup_label["top"] + 1
     above = toggle["top"] - detail["bottom"] - 1
     below = height - toggle["bottom"] - 1
+    exact = above == below == 28 and line_height == label_height == 12
+    accepted = max(abs(above - 28), abs(below - 28), abs(line_height - 12), abs(label_height - 12)) <= tolerance
     return {"image": str(normalized), "sha256": hashlib.sha256(normalized.read_bytes()).hexdigest(),
             "size_px": [width, height], "background_rgb": list(background), "rgb_threshold": 8,
             "coordinates": "zero based; inclusive", "detail": detail, "toggle": toggle,
             "detail_first_line_ink_height_px": line_height, "startup_label_ink_height_px": label_height,
             "above_px": above, "below_px": below,
-            "result": "PASS" if above == below == 28 and line_height == label_height == 12 else "FAIL"}
+            "tolerance_px": tolerance, "strict_match": exact,
+            "result": "PASS" if accepted else "FAIL"}
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("images", type=Path, nargs="+")
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--tolerance", type=int, choices=[0, 1], default=0,
+                        help="CIのOS描画差のみ1pxを許容。実機は既定の0で厳密に検証する")
     args = parser.parse_args()
-    measurements = [measure(path) for path in args.images]
+    measurements = [measure(path, args.tolerance) for path in args.images]
     report = {"result": "PASS" if all(m["result"] == "PASS" for m in measurements) else "FAIL",
               "measurements": measurements}
     args.report.parent.mkdir(parents=True, exist_ok=True)
