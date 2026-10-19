@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import time
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -110,7 +111,7 @@ def launch(name, app, expected_on, expected_choice, click=False, preview=False):
             assert not state["displayAssertion"], state
             assert state["startsOn"] == expected_choice, state
             if click and not preview:
-                assert state["panelWidth"] == 300 and state["panelHeight"] <= 330, state
+                assert state["panelWidth"] == 300 and state["panelHeight"] == 326, state
         if click:
             process.communicate(timeout=15)
         results[name] = samples
@@ -133,6 +134,10 @@ try:
     launch("relaunch-off", args.app.resolve(), False, False)
     launch("preview-isolated", qa_app, False, True, click=True, preview=True)
     assert choice().stdout.strip() == "0", "プレビューが本番設定を変更しました"
+    subprocess.run([sys.executable, str(root / "scripts/verify-panel-pixels.py"),
+                    str(output / "click-on-while-off.json.png"),
+                    str(output / "click-off-while-on.json.png"),
+                    "--report", str(output / "startup-pixels.json")], check=True)
     args.report.write_text(json.dumps({"result": "PASS", "checks": results}, ensure_ascii=False, indent=2) + "\n")
     print(json.dumps({"result": "PASS", "checks": list(results)}, ensure_ascii=False))
 finally:

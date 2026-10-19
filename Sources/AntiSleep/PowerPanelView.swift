@@ -105,7 +105,7 @@ final class PowerPanelView: NSView {
         stateLabel.font = .systemFont(ofSize: 25, weight: .semibold)
         stack.addArrangedSubview(stateLabel)
         detail.alignment = .center
-        detail.font = .systemFont(ofSize: 12)
+        detail.font = .systemFont(ofSize: 13)
         detail.textColor = .secondaryLabelColor
         detail.preferredMaxLayoutWidth = 256
         stack.addArrangedSubview(detail)
@@ -122,7 +122,7 @@ final class PowerPanelView: NSView {
         startupRow.alignment = .centerY
         startupRow.spacing = 8
         let startupLabel = NSTextField(labelWithString: "起動時にON")
-        startupLabel.font = .systemFont(ofSize: 12)
+        startupLabel.font = .systemFont(ofSize: 13)
         startupLabel.textColor = .secondaryLabelColor
         startupSwitch.controlSize = .mini
         startupSwitch.setAccessibilityLabel("起動時にON")
@@ -130,9 +130,10 @@ final class PowerPanelView: NSView {
         startupRow.addArrangedSubview(startupLabel)
         startupRow.addArrangedSubview(startupSwitch)
         startupRow.translatesAutoresizingMaskIntoConstraints = false
+        // 文字・スイッチ内部の余白も含め、描画上の上下を28pxに揃える。
         NSLayoutConstraint.activate([
             startupRow.centerXAnchor.constraint(equalTo: centerXAnchor),
-            startupRow.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
+            startupRow.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -22),
             startupRow.heightAnchor.constraint(equalToConstant: 28)
         ])
         quitButton.isBordered = false
@@ -156,7 +157,7 @@ final class PowerPanelView: NSView {
         dirtyRect.fill()
     }
 
-    var contentSize: NSSize { NSSize(width: 300, height: max(314, fittingSize.height)) }
+    var contentSize: NSSize { NSSize(width: 300, height: max(326, fittingSize.height)) }
 
     func showStartupOn(_ value: Bool) {
         startupSwitch.state = value ? .on : .off
