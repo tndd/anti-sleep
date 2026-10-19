@@ -68,6 +68,7 @@ final class PowerPanelView: NSView {
     let helperButton = NSButton(title: "ヘルパーを設定…", target: nil, action: nil)
     let quitButton = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "終了")!, target: nil, action: nil)
     private let stack = NSStackView()
+    private let startupRow = NSStackView()
     private let glyph = NSImageView()
     private let stateLabel = NSTextField(labelWithString: "OFF")
     private let detail = NSTextField(wrappingLabelWithString: "電源ボタンでスリープ防止をONにできます。")
@@ -81,9 +82,10 @@ final class PowerPanelView: NSView {
         stack.spacing = 8
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
+        addSubview(startupRow)
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: topAnchor, constant: 20),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -20),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: startupRow.topAnchor, constant: -20),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 22),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -22)
         ])
@@ -108,6 +110,7 @@ final class PowerPanelView: NSView {
         detail.preferredMaxLayoutWidth = 256
         stack.addArrangedSubview(detail)
         detail.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        detail.heightAnchor.constraint(greaterThanOrEqualToConstant: 38).isActive = true
         previewNote.font = .systemFont(ofSize: 10)
         previewNote.textColor = .secondaryLabelColor
         stack.addArrangedSubview(previewNote)
@@ -115,7 +118,6 @@ final class PowerPanelView: NSView {
         helperButton.font = .systemFont(ofSize: 11)
         helperButton.isHidden = true
         stack.addArrangedSubview(helperButton)
-        let startupRow = NSStackView()
         startupRow.orientation = .horizontal
         startupRow.alignment = .centerY
         startupRow.spacing = 8
@@ -127,7 +129,12 @@ final class PowerPanelView: NSView {
         startupSwitch.setAccessibilityHelp("次回のアプリ起動時から適用します。現在のスリープ防止状態は変更しません。")
         startupRow.addArrangedSubview(startupLabel)
         startupRow.addArrangedSubview(startupSwitch)
-        stack.addArrangedSubview(startupRow)
+        startupRow.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            startupRow.centerXAnchor.constraint(equalTo: centerXAnchor),
+            startupRow.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -20),
+            startupRow.heightAnchor.constraint(equalToConstant: 28)
+        ])
         quitButton.isBordered = false
         quitButton.contentTintColor = .secondaryLabelColor
         quitButton.toolTip = "設定を元に戻してAntiSleepを終了"
