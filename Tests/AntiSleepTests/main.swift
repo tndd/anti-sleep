@@ -23,6 +23,7 @@ func expectLessThan<T: Comparable>(_ a: T, _ b: T, file: StaticString = #filePat
 }
 let suite = ProtectionSessionTests()
 let switches = ProtectionSwitchTests()
+let startup = StartupSettingsTests()
 let checks: [(String, () -> Void)] = [
     ("起動で保護・終了で復元", suite.testLaunchProtectsWithoutKeyboardInputAndQuitRestores),
     ("設定変更より先に復元監視", suite.testRecoveryIsArmedBeforeChangingSystemSetting),
@@ -52,7 +53,9 @@ let checks: [(String, () -> Void)] = [
     ("防止要求の解除失敗時は監視を維持", suite.testAssertionReleaseFailureKeepsRecoveryArmed),
     ("監視が終了するまで終了を許可しない", suite.testRecoveryMustExitBeforeShutdownCompletes),
     ("正常終了後は定期確認で再度ONにしない", switches.testSuccessfulShutdownCannotReenableProtectionOnReconcile),
-    ("終了失敗後に再試行して復元", switches.testFailedShutdownCanBeRetried)
+    ("終了失敗後に再試行して復元", switches.testFailedShutdownCanBeRetried),
+    ("起動時設定の初期値OFFと保存", startup.testDefaultsToOffAndPersistsExplicitChoice),
+    ("起動時設定と現在の保護を分離", startup.testChoiceDoesNotChangeRunningProtection)
 ]
 for (name, check) in checks {
     let before = failures
