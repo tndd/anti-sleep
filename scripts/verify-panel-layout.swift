@@ -59,7 +59,13 @@ struct PanelLayoutChecks {
                 bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                 colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) {
                 bitmap.size = panel.bounds.size
-                panel.cacheDisplay(in: panel.bounds, to: bitmap)
+                let context = NSGraphicsContext(bitmapImageRep: bitmap)!
+                // 1x画面の文字用スムージングも無効化し、Retinaの描画条件に揃える。
+                context.cgContext.setAllowsFontSmoothing(false)
+                context.cgContext.setShouldSmoothFonts(false)
+                context.cgContext.setAllowsFontSubpixelQuantization(false)
+                context.cgContext.setShouldSubpixelQuantizeFonts(false)
+                panel.displayIgnoringOpacity(panel.bounds, in: context)
                 try bitmap.representation(using: .png, properties: [:])!.write(to: output.appendingPathComponent(name + ".png"))
             }
             if abs(bottom - 22) > 0.5 { failures.append("\(name): 行の下余白\(bottom)pt（期待22pt）") }
